@@ -16,7 +16,7 @@ const copyBtn = document.getElementById('copyBtn');
 const pasteBtn = document.getElementById('pasteBtn');
 const resetBtn = document.getElementById('resetBtn');
 
-const deviceSelect = document.getElementById('deviceSelect');
+const outputSelect = document.getElementById('outputSelect');
 const inputSelect = document.getElementById('inputSelect');
 const scanButton = document.getElementById('scanButton');
 const nextButton = document.getElementById('nextButton');
@@ -82,6 +82,24 @@ function logInfo(message) {
     console.log(`[${timestamp}] ${message}`);
 }
 
+// Debug listener: logs whenever a port's "state" or "connection" attribute changes.
+// Attached once per port using a stable function reference, so re-selecting the
+// same port from the dropdown does not register duplicate listeners.
+function handlePortStateChange(event) {
+    const port = event.port;
+    logInfo(`Port state change: ${port.name} (${port.type}) - state: "${port.state}", connection: "${port.connection}"`);
+}
+
+// Ensure a port's "connection" attribute is "open" before we use it for I/O,
+// opening it (and awaiting completion) if it is not.
+async function ensurePortOpen(port, label) {
+    if (port.connection !== 'open') {
+        logInfo(`${label} port connection is "${port.connection}" (state: "${port.state}") - opening...`);
+        await port.open();
+        logInfo(`${label} port connection is now "${port.connection}" (state: "${port.state}")`);
+    }
+}
+
 // Initialize Web MIDI API
 async function initMIDI() {
     try {
@@ -100,29 +118,29 @@ async function initMIDI() {
 // Update the device dropdown list
 function updateDeviceList() {
     // Save current selections
-    const currentOutputValue = deviceSelect.value;
+    const currentOutputValue = outputSelect.value;
     const currentInputValue = inputSelect.value;
 
     // Update output devices
-    deviceSelect.innerHTML = '<option value="">-- Select a MIDI Output --</option>';
+    outputSelect.innerHTML = '<option value="">-- Select a MIDI Output --</option>';
 
     const outputs = Array.from(midiAccess.outputs.values());
 
     if (outputs.length === 0) {
-        deviceSelect.innerHTML = '<option value="">No MIDI output devices found</option>';
-        deviceSelect.disabled = true;
+        outputSelect.innerHTML = '<option value="">No MIDI output devices found</option>';
+        outputSelect.disabled = true;
     } else {
         outputs.forEach((output, index) => {
             const option = document.createElement('option');
             option.value = index;
             option.textContent = `${output.name} (${output.manufacturer || 'Unknown'})`;
-            deviceSelect.appendChild(option);
+            outputSelect.appendChild(option);
         });
-        deviceSelect.disabled = false;
+        outputSelect.disabled = false;
 
         // Restore previous selection if it still exists
         if (currentOutputValue !== '' && currentOutputValue < outputs.length) {
-            deviceSelect.value = currentOutputValue;
+            outputSelect.value = currentOutputValue;
         }
     }
 
@@ -193,7 +211,7 @@ function updateScanButtonState() {
 }
 
 // Handle output device selection
-deviceSelect.addEventListener('change', (e) => {
+outputSelect.addEventListener('change', async (e) => {
     if (e.target.value === '') {
         selectedOutputPort = null;
         logInfo('Output device deselected');
@@ -201,13 +219,23 @@ deviceSelect.addEventListener('change', (e) => {
         const outputs = Array.from(midiAccess.outputs.values());
         selectedOutputPort = outputs[e.target.value];
         logInfo(`Output device selected: ${selectedOutputPort.name} (manufacturer: ${selectedOutputPort.manufacturer || 'Unknown'}, id: ${selectedOutputPort.id})`);
+
+        // Debug: log state/connection changes for this port
+        selectedOutputPort.addEventListener('statechange', handlePortStateChange);
+
+        // Open the port as soon as it's selected, rather than waiting until send time
+        try {
+            await ensurePortOpen(selectedOutputPort, 'Output');
+        } catch (error) {
+            logInfo(`Failed to open output port: ${error.message}`);
+        }
     }
     deviceDetected = false; // Reset detection state when device changes
     updateScanButtonState();
 });
 
 // Handle input device selection
-inputSelect.addEventListener('change', (e) => {
+inputSelect.addEventListener('change', async (e) => {
     // Remove master handler from previous input if any
     if (selectedInputPort) {
         selectedInputPort.onmidimessage = null;
@@ -225,6 +253,16 @@ inputSelect.addEventListener('change', (e) => {
         // Set master message handler using onmidimessage property to ensure
         // the port is properly opened and ready to receive messages
         selectedInputPort.onmidimessage = masterMessageHandler;
+
+        // Debug: log state/connection changes for this port
+        selectedInputPort.addEventListener('statechange', handlePortStateChange);
+
+        // Open the port as soon as it's selected, rather than waiting until send time
+        try {
+            await ensurePortOpen(selectedInputPort, 'Input');
+        } catch (error) {
+            logInfo(`Failed to open input port: ${error.message}`);
+        }
     }
     deviceDetected = false; // Reset detection state when device changes
     updateScanButtonState();
@@ -321,10 +359,11 @@ async function scanDevice() {
             throw new Error('No input/output port available');
         }
 
-        // Ensure both ports are fully open before sending — setting onmidimessage
-        // implicitly requests open() but it completes asynchronously, so without
-        // this await the input port may not yet be ready to receive on a fresh selection.
-        await Promise.all([selectedInputPort.open(), selectedOutputPort.open()]);
+        // Ensure both ports are fully open before sending — the dropdown handlers
+        // already open ports on selection, but this is a safety net in case a
+        // port's connection dropped (e.g. device unplugged/replugged) in the meantime.
+        await ensurePortOpen(selectedOutputPort, 'Output');
+        await ensurePortOpen(selectedInputPort, 'Input');
 
         const responsePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -529,11 +568,15 @@ function generateRoutingMatrix() {
 
 // Save routing for current patch
 // Request patch data from device
-function requestPatchData(patchNumber) {
+async function requestPatchData(patchNumber) {
     if (!selectedOutputPort || !selectedInputPort) {
         logInfo(`Cannot request patch ${patchNumber} - no MIDI ports selected`);
         return;
     }
+
+    // Make sure both ports are open before we send/expect a response
+    await ensurePortOpen(selectedOutputPort, 'Output');
+    await ensurePortOpen(selectedInputPort, 'Input');
 
     // Request Patch SysEx message: F0 00 20 31 64 12 00 00 [patch-1] F7
     // Patch number is 0-indexed in the message (0x00 to 0x1F for patches 1-32)
@@ -796,7 +839,7 @@ function buildRoutingBytes(patchNumber) {
 
 // Send current patch routing to the device
 // SysEx: F0 00 20 31 64 11 00 00 [patch-1] 00 [routingBytes...] F7
-function sendPatchToDevice(patchNumber) {
+async function sendPatchToDevice(patchNumber) {
     if (!selectedOutputPort || !selectedInputPort) {
         logInfo('Cannot send patch - no MIDI ports selected');
         return;
@@ -810,6 +853,10 @@ function sendPatchToDevice(patchNumber) {
 
     const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x11, 0x00, 0x00,
         patchNumber - 1, 0x00].concat(routingBytes).concat([0xF7]);
+
+    // Make sure both ports are open before sending
+    await ensurePortOpen(selectedOutputPort, 'Output');
+    await ensurePortOpen(selectedInputPort, 'Input');
 
     logInfo('Sending patch ' + patchNumber + ' to device');
     logDebug('sent', msg);
@@ -839,7 +886,7 @@ const LED_BRIGHTNESS_BYTES = [
     [0x08, 0x00]  // 8
 ];
 
-function sendLedBrightness(ledType, level) {
+async function sendLedBrightness(ledType, level) {
     if (!selectedOutputPort) {
         logInfo('Cannot send LED brightness - no MIDI output selected');
         return;
@@ -848,6 +895,9 @@ function sendLedBrightness(ledType, level) {
     const [brightnessHi, brightnessLo] = LED_BRIGHTNESS_BYTES[level];
     const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x13, 0x00, 0x00, 0x00,
         LED_SELECT_BYTE[ledType], 0x00, brightnessHi, brightnessLo, 0xF7];
+
+    // Make sure the output port is open before sending
+    await ensurePortOpen(selectedOutputPort, 'Output');
 
     logInfo(`Setting ${ledType === 'io' ? 'I/O' : 'RS'} LED brightness to ${level === 0 ? 'Off' : level}`);
     logDebug('sent', msg);
