@@ -461,14 +461,27 @@ function showPatchesPanel() {
     const titleText = document.createTextNode(detectedDeviceInfo.deviceType + ' Control Panel');
     header.appendChild(titleText);
 
-    // Generate patch list and matrix based on device
+    // Generate patch list, matrix, message filters and patch change options based on device
     generatePatchList();
     generateRoutingMatrix();
+    setupComputerAndPatchTabs();
 
-    // Lock the tab panel to the Patches tab's size so switching tabs doesn't resize the window
+    // Lock the tab panel to the largest tab's size so switching tabs doesn't resize the window
     const tabPaneWrapper = document.querySelector('.tab-pane-wrapper');
-    tabPaneWrapper.style.width = tabPaneWrapper.offsetWidth + 'px';
-    tabPaneWrapper.style.height = tabPaneWrapper.offsetHeight + 'px';
+    const tabContents = document.querySelectorAll('.tab-content');
+    const activeTabContent = document.querySelector('.tab-content.active');
+    let maxWidth = 0;
+    let maxHeight = 0;
+    tabContents.forEach(content => {
+        tabContents.forEach(c => c.classList.remove('active'));
+        content.classList.add('active');
+        maxWidth = Math.max(maxWidth, tabPaneWrapper.offsetWidth);
+        maxHeight = Math.max(maxHeight, tabPaneWrapper.offsetHeight);
+    });
+    tabContents.forEach(c => c.classList.remove('active'));
+    activeTabContent.classList.add('active');
+    tabPaneWrapper.style.width = maxWidth + 'px';
+    tabPaneWrapper.style.height = maxHeight + 'px';
 }
 
 // Generate list of 32 patches
@@ -920,6 +933,469 @@ function bindBrightnessSlider(sliderId, valueId, ledType) {
 bindBrightnessSlider('ioLedBrightness', 'ioLedBrightnessValue', 'io');
 bindBrightnessSlider('rsLedBrightness', 'rsLedBrightnessValue', 'rs');
 
+// Active message filters (Computer and Patch tabs, Unitor8/AMT8 only)
+const MESSAGE_FILTER_TYPES = [
+    { id: 'mtc', label: 'MTC' },
+    { id: 'sysex', label: 'SysEx' },
+    { id: 'activeSensing', label: 'Active Sensing' },
+    { id: 'tuneRequest', label: 'Tune Request' },
+    { id: 'realtime', label: 'Realtime' },
+    { id: 'systemReset', label: 'System Reset' },
+    { id: 'songSelect', label: 'Song Select' }
+];
+const NUM_FILTER_PORTS = 8;
+
+// Filter state: messageFilters[mode][direction][filterType][port] = enabled
+// mode is 'computer' (Computer tab) or 'patch' (Patch tab)
+let messageFilters = {};
+
+// Generate the active message filters grid into the given container
+// An optional leading element is placed above the filters, spanning both filter
+// columns, so it lines up with the filter heading and switches
+function generateMessageFilters(container, mode, leadingElement = null) {
+    container.innerHTML = '';
+
+    messageFilters[mode] = { input: {}, output: {} };
+
+    const grid = document.createElement('div');
+    grid.className = 'filters-grid';
+
+    if (leadingElement) {
+        grid.appendChild(document.createElement('div'));
+        leadingElement.classList.add('filters-span');
+        grid.appendChild(leadingElement);
+    }
+
+    // Title spanning both filter columns
+    grid.appendChild(document.createElement('div'));
+    const title = document.createElement('div');
+    title.className = 'section-title filters-title';
+    title.textContent = 'Active Message Filters';
+    grid.appendChild(title);
+
+    // Column headers
+    grid.appendChild(document.createElement('div'));
+    ['Input Filters', 'Output Filters'].forEach(text => {
+        const header = document.createElement('div');
+        header.className = 'filters-column-header';
+        header.textContent = text;
+        grid.appendChild(header);
+    });
+
+    // Port number labels
+    grid.appendChild(document.createElement('div'));
+    for (let column = 0; column < 2; column++) {
+        const portLabels = document.createElement('div');
+        portLabels.className = 'filter-switches';
+        for (let p = 1; p <= NUM_FILTER_PORTS; p++) {
+            const label = document.createElement('div');
+            label.className = 'output-label';
+            label.textContent = p;
+            portLabels.appendChild(label);
+        }
+        grid.appendChild(portLabels);
+    }
+
+    // One row per filter type, with a switch for each input and output
+    MESSAGE_FILTER_TYPES.forEach(filterType => {
+        const label = document.createElement('div');
+        label.className = 'filter-label';
+        label.textContent = filterType.label;
+        grid.appendChild(label);
+
+        ['input', 'output'].forEach(direction => {
+            messageFilters[mode][direction][filterType.id] = {};
+
+            const switches = document.createElement('div');
+            switches.className = 'filter-switches';
+
+            for (let p = 1; p <= NUM_FILTER_PORTS; p++) {
+                messageFilters[mode][direction][filterType.id][p] = false;
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'filter-checkbox';
+                checkbox.dataset.direction = direction;
+                checkbox.dataset.filter = filterType.id;
+                checkbox.dataset.port = p;
+                checkbox.title = `${filterType.label} - ${direction === 'input' ? 'In' : 'Out'} ${p}`;
+
+                checkbox.addEventListener('change', () => {
+                    saveMessageFilter(mode, direction, filterType.id, p, checkbox.checked);
+                });
+
+                switches.appendChild(checkbox);
+            }
+
+            grid.appendChild(switches);
+        });
+    });
+
+    // Action buttons below the filters
+    grid.appendChild(document.createElement('div'));
+    const actions = document.createElement('div');
+    actions.className = 'matrix-actions filters-actions filters-span';
+
+    const resetButton = document.createElement('button');
+    resetButton.innerHTML = '<span>Reset</span>';
+    resetButton.addEventListener('click', () => resetMessageFilters(mode));
+    actions.appendChild(resetButton);
+
+    const sendButton = document.createElement('button');
+    sendButton.className = 'send-button';
+    sendButton.innerHTML = '<span>Send to Device</span>';
+    sendButton.addEventListener('click', () => sendMessageFilters(mode));
+    actions.appendChild(sendButton);
+
+    grid.appendChild(actions);
+
+    container.appendChild(grid);
+}
+
+// Save a message filter switch state (sent to the device with "Send to Device")
+function saveMessageFilter(mode, direction, filterType, port, enabled) {
+    messageFilters[mode][direction][filterType][port] = enabled;
+
+    logInfo(`Message filter (${mode}) ${filterType}: ${direction === 'input' ? 'Input' : 'Output'} ${port} = ${enabled}`);
+}
+
+// Set a message filter state and its switch
+function setMessageFilter(mode, direction, filterType, port, enabled) {
+    messageFilters[mode][direction][filterType][port] = enabled;
+    document.getElementById(mode + 'FiltersContainer')
+        .querySelector(`.filter-checkbox[data-direction="${direction}"][data-filter="${filterType}"][data-port="${port}"]`)
+        .checked = enabled;
+}
+
+// Default filters: only Active Sensing and System Reset active on every port
+const DEFAULT_MESSAGE_FILTERS = ['activeSensing', 'systemReset'];
+
+// Reset button handler: restore the default filters (not sent until "Send to Device")
+function resetMessageFilters(mode) {
+    ['input', 'output'].forEach(direction => {
+        for (let p = 1; p <= NUM_FILTER_PORTS; p++) {
+            MESSAGE_FILTER_TYPES.forEach(filterType => {
+                setMessageFilter(mode, direction, filterType.id, p, DEFAULT_MESSAGE_FILTERS.includes(filterType.id));
+            });
+        }
+    });
+
+    logInfo(`Message filters (${mode}) reset to default (Active Sensing and System Reset)`);
+}
+
+// Send to Device button handler: send the filters of every input and output port
+async function sendMessageFilters(mode) {
+    for (const direction of ['input', 'output']) {
+        for (let p = 1; p <= NUM_FILTER_PORTS; p++) {
+            await sendMessageFilter(mode, direction, p);
+        }
+    }
+}
+
+// Message filter base address per mode
+// Inputs 1-8 are at base + 0x00-0x07, outputs 1-8 at base + 0x08-0x0F
+const MESSAGE_FILTER_ADDRESSES = {
+    computer: [0x01, 0x00],
+    patch: [0x02, 0x00]
+};
+
+// Check if a message is a config block response for the given block address
+// Expected pattern: F0 00 20 31 64 79 00 00 [block-hi] [block-lo] 3F [2 bytes per address from block...] F7
+function isConfigBlockResponse(data, block, minLength) {
+    const header = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x79, 0x00, 0x00, block[0], block[1], 0x3F];
+
+    if (data.length < minLength) return false;
+    for (let i = 0; i < header.length; i++) {
+        if (data[i] !== header[i]) return false;
+    }
+    return data[data.length - 1] === 0xF7;
+}
+
+// Address offset of a port's filter setting from the mode's base address
+function messageFilterOffset(direction, port) {
+    return (direction === 'output' ? NUM_FILTER_PORTS : 0) + port - 1;
+}
+
+// Send the filters of one port to the device
+// SysEx: F0 00 20 31 64 13 00 00 [addr-hi] [addr-lo] 00 [bitmap-hi] [bitmap-lo] F7
+// The bitmap has one bit per filter type, in MESSAGE_FILTER_TYPES order (bit 0 = MTC ... bit 6 = Song Select),
+// split into two 4-bit nibbles like the routing data
+async function sendMessageFilter(mode, direction, port) {
+    if (!selectedOutputPort) {
+        logInfo('Cannot send message filter - no MIDI output selected');
+        return;
+    }
+
+    const base = MESSAGE_FILTER_ADDRESSES[mode];
+
+    let bitmap = 0;
+    MESSAGE_FILTER_TYPES.forEach((filterType, bit) => {
+        if (messageFilters[mode][direction][filterType.id][port]) {
+            bitmap |= (1 << bit);
+        }
+    });
+
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x13, 0x00, 0x00,
+        base[0], base[1] + messageFilterOffset(direction, port), 0x00,
+        (bitmap >> 4) & 0x0F, bitmap & 0x0F, 0xF7];
+
+    // Make sure the output port is open before sending
+    await ensurePortOpen(selectedOutputPort, 'Output');
+
+    logInfo(`Sending message filters (${mode}) for ${direction === 'input' ? 'Input' : 'Output'} ${port}: bitmap 0x${bitmap.toString(16).padStart(2, '0')}`);
+    logDebug('sent', msg);
+    selectedOutputPort.send(msg);
+}
+
+// Update the message filter state and switches of a mode from a config block response
+// data: the full response, block: start address of the response data
+function updateMessageFiltersFromResponse(mode, data, block) {
+    const base = MESSAGE_FILTER_ADDRESSES[mode];
+
+    ['input', 'output'].forEach(direction => {
+        for (let p = 1; p <= NUM_FILTER_PORTS; p++) {
+            const index = 11 + (base[1] + messageFilterOffset(direction, p) - block[1]) * 2;
+            const bitmap = (data[index] << 4) | data[index + 1];
+
+            MESSAGE_FILTER_TYPES.forEach((filterType, bit) => {
+                setMessageFilter(mode, direction, filterType.id, p, (bitmap & (1 << bit)) !== 0);
+            });
+        }
+    });
+
+    logInfo(`Updated message filters (${mode}) from device`);
+}
+
+// Request the computer mode config (message filters) from the Unitor8/AMT8
+// SysEx: F0 00 20 31 64 14 00 00 01 00 3F F7
+async function requestComputerModeConfig() {
+    if (!selectedOutputPort || !selectedInputPort) {
+        logInfo('Cannot request computer mode config - no MIDI ports selected');
+        return;
+    }
+
+    if (!messageFilters.computer) return;
+
+    const block = MESSAGE_FILTER_ADDRESSES.computer;
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x14, 0x00, 0x00, block[0], block[1], 0x3F, 0xF7];
+
+    // Make sure both ports are open before we send/expect a response
+    await ensurePortOpen(selectedOutputPort, 'Output');
+    await ensurePortOpen(selectedInputPort, 'Input');
+
+    logInfo('Requesting computer mode config');
+    logDebug('sent', msg);
+
+    // Set up listener for computer mode config response
+    const computerModeHandler = (event) => {
+        const data = Array.from(event.data);
+        // Filters cover 16 addresses of 2 bytes each after the 11 byte header
+        if (isConfigBlockResponse(data, block, 11 + NUM_FILTER_PORTS * 2 * 2 + 1)) {
+            updateMessageFiltersFromResponse('computer', data, block);
+
+            // Remove this handler after receiving response
+            removeMessageListener(computerModeHandler);
+        }
+    };
+
+    // Add handler to listener chain
+    addMessageListener(computerModeHandler);
+
+    // Send request
+    selectedOutputPort.send(msg);
+
+    // Set timeout to remove handler if no response
+    setTimeout(() => {
+        removeMessageListener(computerModeHandler);
+    }, RESPONSE_TIMEOUT_MS);
+}
+
+// Patch change (Patch tab)
+// Selects the active patch from a program change on the given input port and MIDI channel
+let patchChange = { enabled: false, inputPort: 1, midiChannel: 1 };
+
+const patchChangeEnabled = document.getElementById('patchChangeEnabled');
+const patchChangeInputPort = document.getElementById('patchChangeInputPort');
+const patchChangeChannel = document.getElementById('patchChangeChannel');
+
+// Fill the patch change dropdowns based on device type
+function generatePatchChangeOptions() {
+    const numInputs = detectedDeviceInfo.deviceType === 'MT4' ? 2 : 8;
+
+    patchChangeInputPort.innerHTML = '';
+    for (let p = 1; p <= numInputs; p++) {
+        const option = document.createElement('option');
+        option.value = p;
+        option.textContent = `In ${p}`;
+        patchChangeInputPort.appendChild(option);
+    }
+
+    patchChangeChannel.innerHTML = '';
+    for (let c = 1; c <= 16; c++) {
+        const option = document.createElement('option');
+        option.value = c;
+        option.textContent = c;
+        patchChangeChannel.appendChild(option);
+    }
+
+    patchChange = { enabled: false, inputPort: 1, midiChannel: 1 };
+    patchChangeEnabled.checked = patchChange.enabled;
+    patchChangeInputPort.value = patchChange.inputPort;
+    patchChangeChannel.value = patchChange.midiChannel;
+}
+
+// Patch change config addresses per device
+// block: start address of the config block read with the request (SysEx 0x14)
+// param: address of the patch change setting, written with SysEx 0x13
+// inputMask: flag bits holding the input port (1 bit for the 2 MT4 inputs, 3 bits for 8 inputs)
+// The response holds 2 bytes per address starting at the block address
+const PATCH_CHANGE_ADDRESSES = {
+    MT4: { block: [0x04, 0x40], param: [0x04, 0x41], inputMask: 0x01 },
+    Unitor8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07 },
+    AMT8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07 }
+};
+
+// Parse the patch change config response
+// Expected pattern: F0 00 20 31 64 79 00 00 [block-hi] [block-lo] 3F [2 bytes per address from block...] F7
+// The patch change setting is [flags] [channel-1]
+// flags: bit 3 (0x08) = enabled, bit 0 (MT4) or bits 0-2 (Unitor8/AMT8) = input port - 1
+function parsePatchChangeResponse(data) {
+    const { block, param, inputMask } = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType];
+    const offset = 11 + (param[1] - block[1]) * 2;
+
+    if (!isConfigBlockResponse(data, block, offset + 3)) return null;
+
+    const flags = data[offset];
+    const channel = data[offset + 1];
+
+    return {
+        enabled: (flags & 0x08) !== 0,
+        inputPort: (flags & inputMask) + 1,
+        midiChannel: (channel & 0x0F) + 1
+    };
+}
+
+// Request the patch mode config (patch change and, on the Unitor8/AMT8, message filters) from the device
+// SysEx: F0 00 20 31 64 14 00 00 [block-hi] [block-lo] 3F F7
+// (04 40 for the MT4, 02 00 for the Unitor8/AMT8)
+async function requestPatchModeConfig() {
+    if (!selectedOutputPort || !selectedInputPort) {
+        logInfo('Cannot request patch change config - no MIDI ports selected');
+        return;
+    }
+
+    const { block } = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType];
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x14, 0x00, 0x00, block[0], block[1], 0x3F, 0xF7];
+
+    // Make sure both ports are open before we send/expect a response
+    await ensurePortOpen(selectedOutputPort, 'Output');
+    await ensurePortOpen(selectedInputPort, 'Input');
+
+    logInfo('Requesting patch mode config');
+    logDebug('sent', msg);
+
+    // Set up listener for patch change config response
+    const patchModeHandler = (event) => {
+        const data = Array.from(event.data);
+        const response = parsePatchChangeResponse(data);
+        if (response) {
+            logInfo(`Received patch change config: ${response.enabled ? 'enabled' : 'disabled'}, input ${response.inputPort}, channel ${response.midiChannel}`);
+
+            // Update controls (setting them programmatically doesn't fire change events, so nothing is sent back)
+            patchChange = response;
+            patchChangeEnabled.checked = patchChange.enabled;
+            patchChangeInputPort.value = patchChange.inputPort;
+            patchChangeChannel.value = patchChange.midiChannel;
+
+            // The same block holds the patch mode message filters on the Unitor8/AMT8
+            if (messageFilters.patch) {
+                updateMessageFiltersFromResponse('patch', data, block);
+            }
+
+            // Remove this handler after receiving response
+            removeMessageListener(patchModeHandler);
+        }
+    };
+
+    // Add handler to listener chain
+    addMessageListener(patchModeHandler);
+
+    // Send request
+    selectedOutputPort.send(msg);
+
+    // Set timeout to remove handler if no response
+    setTimeout(() => {
+        removeMessageListener(patchModeHandler);
+    }, RESPONSE_TIMEOUT_MS);
+}
+
+// Send the patch change config to the device
+// SysEx: F0 00 20 31 64 13 00 00 [param-hi] [param-lo] 00 [flags] [channel-1] F7
+// (04 41 for the MT4, 02 11 for the Unitor8/AMT8)
+// flags: bit 3 (0x08) = enabled, bit 0 (MT4) or bits 0-2 (Unitor8/AMT8) = input port - 1
+async function sendPatchChange() {
+    if (!selectedOutputPort) {
+        logInfo('Cannot send patch change - no MIDI output selected');
+        return;
+    }
+
+    const { param, inputMask } = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType];
+    const flags = (patchChange.enabled ? 0x08 : 0x00) | ((patchChange.inputPort - 1) & inputMask);
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x13, 0x00, 0x00, param[0], param[1], 0x00,
+        flags, patchChange.midiChannel - 1, 0xF7];
+
+    // Make sure the output port is open before sending
+    await ensurePortOpen(selectedOutputPort, 'Output');
+
+    logInfo(`Sending patch change: ${patchChange.enabled ? 'enabled' : 'disabled'}, input ${patchChange.inputPort}, channel ${patchChange.midiChannel}`);
+    logDebug('sent', msg);
+    selectedOutputPort.send(msg);
+}
+
+patchChangeEnabled.addEventListener('change', () => {
+    patchChange.enabled = patchChangeEnabled.checked;
+    logInfo(`Patch change ${patchChange.enabled ? 'enabled' : 'disabled'}`);
+    sendPatchChange();
+});
+
+patchChangeInputPort.addEventListener('change', () => {
+    patchChange.inputPort = parseInt(patchChangeInputPort.value, 10);
+    logInfo(`Patch change input port = ${patchChange.inputPort}`);
+    sendPatchChange();
+});
+
+patchChangeChannel.addEventListener('change', () => {
+    patchChange.midiChannel = parseInt(patchChangeChannel.value, 10);
+    logInfo(`Patch change MIDI channel = ${patchChange.midiChannel}`);
+    sendPatchChange();
+});
+
+// Set up the Computer and Patch tabs based on device type
+// The MT4 doesn't support message filtering, so it has no Computer tab and
+// only the patch change section on the Patch tab
+function setupComputerAndPatchTabs() {
+    const supportsFilters = detectedDeviceInfo.deviceType !== 'MT4';
+    const computerFiltersContainer = document.getElementById('computerFiltersContainer');
+    const patchFiltersContainer = document.getElementById('patchFiltersContainer');
+    const patchChangeSection = document.getElementById('patchChangeSection');
+
+    // Put the patch change section back in its standalone position before rebuilding
+    patchChangeSection.classList.remove('filters-span');
+    patchFiltersContainer.before(patchChangeSection);
+
+    document.querySelector('.tab[data-tab="computer"]').disabled = !supportsFilters;
+    generatePatchChangeOptions();
+
+    if (supportsFilters) {
+        generateMessageFilters(computerFiltersContainer, 'computer');
+        generateMessageFilters(patchFiltersContainer, 'patch', patchChangeSection);
+    } else {
+        computerFiltersContainer.innerHTML = '';
+        patchFiltersContainer.innerHTML = '';
+        messageFilters = {};
+    }
+}
+
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -930,6 +1406,12 @@ document.querySelectorAll('.tab').forEach(tab => {
 
         tab.classList.add('active');
         document.getElementById(targetTab + 'Tab').classList.add('active');
+
+        if (targetTab === 'patch') {
+            requestPatchModeConfig();
+        } else if (targetTab === 'computer') {
+            requestComputerModeConfig();
+        }
     });
 });
 

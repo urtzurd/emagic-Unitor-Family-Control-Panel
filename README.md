@@ -13,5 +13,10 @@ This project was much easier to implement thanks to the previous effort done by 
 
 ## Requirements
 
-The panel requires a web MIDI API capable browser and has been developed and tested using Google Chrome. Other browsers might work, but are untested.
+The panel requires a web MIDI API capable browser and has been developed and tested using Google Chrome. Other users have repored it working on FireFox and LibreWolf too.
 Safari and iOS browsers are unsupported, as Apple decided not to implement the web MIDI protocol.
+
+## Changelog
+
+- 08/Aug/2026: First version supporting routing matrix and global settings.
+- 18/Oct/2026: Implemented message filters (supported only by Unitor8/AMT8) and patch change configuration (all models).

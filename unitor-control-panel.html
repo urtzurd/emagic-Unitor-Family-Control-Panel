@@ -102,9 +102,37 @@
             </div>
 
             <div id="computerTab" class="tab-content">
+                <div id="computerFiltersContainer">
+                    <!-- Active message filters will be generated for Unitor8/AMT8 -->
+                </div>
             </div>
 
             <div id="patchTab" class="tab-content">
+                <div class="patch-change" id="patchChangeSection">
+                    <div class="section-title">Patch Change</div>
+                    <div class="patch-change-controls">
+                        <label class="patch-change-toggle" for="patchChangeEnabled">
+                            <input type="checkbox" id="patchChangeEnabled" class="filter-checkbox">
+                            Enabled
+                        </label>
+                        <div>
+                            <label for="patchChangeInputPort">Input Port</label>
+                            <select id="patchChangeInputPort">
+                                <!-- Options will be generated based on device type -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="patchChangeChannel">MIDI Channel</label>
+                            <select id="patchChangeChannel">
+                                <!-- Options 1-16 will be generated -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="patchFiltersContainer">
+                    <!-- Active message filters will be generated for Unitor8/AMT8 -->
+                </div>
             </div>
 
             <div id="globalTab" class="tab-content">

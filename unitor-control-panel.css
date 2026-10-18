@@ -89,7 +89,8 @@ label {
     width: auto;
 }
 
-.matrix-checkbox {
+.matrix-checkbox,
+.filter-checkbox {
     width: 40px;
     height: 40px;
     appearance: none;
@@ -101,12 +102,14 @@ label {
     background: white;
 }
 
-.matrix-checkbox:checked {
+.matrix-checkbox:checked,
+.filter-checkbox:checked {
     background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
     border-color: #667eea;
 }
 
-.matrix-checkbox:hover {
+.matrix-checkbox:hover,
+.filter-checkbox:hover {
     border-color: #667eea;
 }
 
@@ -141,16 +144,60 @@ label {
     box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
 }
 
-#sendBtn {
+#sendBtn,
+.send-button {
     background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
 }
 
-#sendBtn:active:not(:disabled) {
+#sendBtn:active:not(:disabled),
+.send-button:active:not(:disabled) {
     box-shadow: 0 4px 10px rgba(72, 187, 120, 0.3);
 }
 
-#sendBtn:hover:not(:disabled) {
+#sendBtn:hover:not(:disabled),
+.send-button:hover:not(:disabled) {
     box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
+}
+
+.filters-column-header {
+    background: #f0f0f0;
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    gap: 8px 24px;
+    align-items: center;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.filters-title,
+.filters-span {
+    grid-column: 2 / 4;
+}
+
+.filters-actions {
+    margin-top: 12px;
+}
+
+.filter-label {
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    white-space: nowrap;
+}
+
+.filter-switches {
+    display: flex;
+    gap: 8px;
 }
 
 .output-label {
@@ -213,8 +260,41 @@ label {
     flex-direction: column;
 }
 
+.patch-change {
+    margin-bottom: 25px;
+}
+
+.patch-change-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-top: 12px;
+}
+
+.patch-change-controls select {
+    width: 140px;
+}
+
+.patch-change-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
 .section {
     margin-bottom: 25px;
+}
+
+.section-title {
+    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
+    border-radius: 4px;
+    padding: 6px 8px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
 }
 
 select {
@@ -339,7 +419,11 @@ select:focus {
     color: white;
 }
 
-.tab:hover:not(.active) {
+.tab:disabled {
+    opacity: 0.5;
+}
+
+.tab:hover:not(.active):not(:disabled) {
     background: #e8e8e8;
 }
 
