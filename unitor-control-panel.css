@@ -258,6 +258,12 @@ label {
 .routing-matrix {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    margin: 0 auto;
+}
+
+.routing-matrix .matrix-actions {
+    align-self: stretch;
 }
 
 .patch-change {
