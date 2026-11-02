@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect x="0" y="0" width="512" height="512" rx="96" ry="96" fill="#ffffff"/>
-  <svg x="28" y="98" width="456" height="158.9" viewBox="0 0 123.47733 43.023262">
+  <rect x="0" y="0" width="512" height="512" rx="72" ry="72" fill="#ffffff"/>
+  <svg x="10" y="90.83" width="492" height="171.44" viewBox="0 0 123.47733 43.023262">
     <defs>
         <clipPath clipPathUnits="userSpaceOnUse" id="clipPath42">
             <path d="M 526.97,781.66 H 595 V 605.91 h -68.03 z" clip-rule="evenodd"/>
@@ -27,5 +27,5 @@
         </g>
     </g>
   </svg>
-  <image href="unitor8-wordmark.png" x="28" y="292" width="456" height="116" preserveAspectRatio="xMidYMid meet"/>
+  <image href="unitor8-wordmark.png" x="7.43" y="298.40" width="499.57" height="127.16" preserveAspectRatio="xMidYMid meet"/>
 </svg>
