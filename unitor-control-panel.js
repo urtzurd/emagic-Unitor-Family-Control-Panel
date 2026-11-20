@@ -1090,6 +1090,29 @@ async function sendMessageFilters(mode) {
             await sendMessageFilter(mode, direction, p);
         }
     }
+
+    // The unit is already in Computer Mode (the macOS driver sends Set Computer Mode
+    // once when the device starts), so re-send it to make the new filters take effect
+    if (mode === 'computer') {
+        await sendSetComputerMode();
+    }
+}
+
+// Switch all chained units to Computer Mode
+// SysEx: F0 00 20 31 64 0F 00 7F F7 (7F = all units)
+async function sendSetComputerMode() {
+    if (!selectedOutputPort) {
+        logInfo('Cannot send Set Computer Mode - no MIDI output selected');
+        return;
+    }
+
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x0F, 0x00, 0x7F, 0xF7];
+
+    await ensurePortOpen(selectedOutputPort, 'Output');
+
+    logInfo('Sending Set Computer Mode');
+    logDebug('sent', msg);
+    selectedOutputPort.send(msg);
 }
 
 // Message filter base address per mode

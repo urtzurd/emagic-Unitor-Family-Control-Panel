@@ -21,3 +21,4 @@ Safari and iOS browsers are unsupported, as Apple decided not to implement the W
 
 - 08/Aug/2026: First version supporting routing matrix and global settings.
 - 18/Oct/2026: Implemented message filters (supported only by Unitor8/AMT8) and patch change configuration (all models).
+- 20/Nov/2026: Fixed Computer mode filters not taking effect. The panel now sends the "Set Computer Mode" command after sending the filters, so the interface applies them straight away.
