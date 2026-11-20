@@ -307,7 +307,8 @@ function isUnitor8ScanResponse(data) {
 // Check if response is firmware version and extract device type
 function checkFirmwareVersionResponse(data) {
     // Expected pattern: F0 00 20 31 64 7B 00 XX [ASCII bytes] F7
-    // XX = 00 for Unitor8, XX = 01 for AMT8, XX = 02 for MT4
+    // XX is the box ID byte 0rbbbggg: r = ROM mode, bbb = box number in a chain,
+    // ggg = model (000 = Unitor8, 001 = AMT8, 010 = MT4)
     if (data.length < 9) return null;
     if (data[0] !== 0xF0) return null;
     if (data[1] !== 0x00 || data[2] !== 0x20 || data[3] !== 0x31) return null;
@@ -315,7 +316,8 @@ function checkFirmwareVersionResponse(data) {
     if (data[6] !== 0x00) return null;
     if (data[data.length - 1] !== 0xF7) return null;
 
-    const deviceTypeByte = data[7];
+    // Only the model bits identify the device type
+    const deviceTypeByte = data[7] & 0x07;
     let deviceType = 'Unknown';
 
     if (deviceTypeByte === 0x00) {
@@ -387,6 +389,12 @@ async function scanDevice() {
                     responseReceived = true;
                     clearTimeout(timeout);
                     removeMessageListener(scanHandler);
+
+                    // The rest of the panel only supports the known models
+                    if (firmwareCheck.deviceType === 'Unknown') {
+                        reject(new Error(`Unsupported device model (ID byte 0x${data[7].toString(16).padStart(2, '0')})`));
+                        return;
+                    }
 
                     // Extract firmware version bytes (between byte 8 and F7)
                     const versionBytes = data.slice(8, data.length - 1);
