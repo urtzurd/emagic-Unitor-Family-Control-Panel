@@ -14,10 +14,9 @@
 <body>
 <div class="container" id="mainContainer">
     <!-- Detection Panel -->
-    <div id="detectionPanel" class="panel active">
-        <h1 style="margin-top: -20px;">
+    <div id="detectionPanel">
+        <h1>
             <svg width="120" height="60" viewBox="0 0 123.47733 43.023262" version="1.1"
-                 style="vertical-align: bottom; margin-right: 10px; padding-top: 20px;"
                  xmlns="http://www.w3.org/2000/svg">
                 <defs>
                     <clipPath clipPathUnits="userSpaceOnUse" id="clipPath42">
@@ -63,17 +62,17 @@
             </select>
         </div>
 
-        <div id="statusMessage" style="margin-bottom: 25px;"></div>
+        <div id="statusMessage"></div>
 
         <div class="section">
             <button id="scanButton" disabled><span>Scan Device</span></button>
-            <button id="nextButton" style="display: none;"><span>Next</span></button>
+            <button id="nextButton" class="button-success" style="display: none;"><span>Next</span></button>
         </div>
     </div>
 
     <!-- Patches Panel -->
-    <div id="patchesPanel" class="panel" style="display: none;">
-        <h1 style="margin-top: -20px;" id="patchesPanelHeader"></h1>
+    <div id="patchesPanel" style="display: none;">
+        <h1 id="patchesPanelHeader"></h1>
         <div class="tabs">
             <button class="tab active" data-tab="patches">Patches</button>
             <button class="tab" data-tab="computer">Computer</button>
@@ -85,22 +84,29 @@
             <div id="patchesTab" class="tab-content active">
                 <div class="patches-container">
                     <!-- Patch List -->
-                    <div class="patch-list" id="patchList">
-                        <!-- Patches 1-64 will be generated here -->
+                    <div class="patch-list-column">
+                        <div class="section-title">Patch Selection</div>
+                        <div class="patch-list" id="patchList">
+                            <!-- Patches 1-32 will be generated here -->
+                        </div>
                     </div>
 
                     <!-- Routing Matrix -->
                     <div class="routing-matrix">
-                        <div id="matrixContainer">
-                            <!-- Matrix will be generated based on device type -->
-                        </div>
+                        <div class="section-title">Routing Matrix</div>
+                        <!-- Matrix and buttons, as wide as the matrix -->
+                        <div class="routing-matrix-body">
+                            <div id="matrixContainer">
+                                <!-- Matrix will be generated based on device type -->
+                            </div>
 
-                        <!-- Action Buttons -->
-                        <div class="matrix-actions">
-                            <button id="copyBtn"><span>Copy</span></button>
-                            <button id="pasteBtn" disabled><span>Paste</span></button>
-                            <button id="resetBtn"><span>Reset</span></button>
-                            <button id="sendBtn"><span>Send to Device</span></button>
+                            <!-- Action Buttons -->
+                            <div class="matrix-actions">
+                                <button id="copyBtn"><span>Copy</span></button>
+                                <button id="pasteBtn" disabled><span>Paste</span></button>
+                                <button id="resetBtn"><span>Reset</span></button>
+                                <button id="sendBtn" class="button-success"><span>Send to Device</span></button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -114,21 +120,37 @@
 
             <div id="patchTab" class="tab-content">
                 <div class="patch-change" id="patchChangeSection">
-                    <div class="section-title">Patch Change</div>
-                    <div class="patch-change-controls">
-                        <label class="patch-change-toggle" for="patchChangeEnabled">
-                            <input type="checkbox" id="patchChangeEnabled" class="filter-checkbox">
-                            Enabled
-                        </label>
-                        <div>
-                            <label for="patchChangeInputPort">Input Port</label>
-                            <select id="patchChangeInputPort">
-                                <!-- Options will be generated based on device type -->
+                    <div class="patch-group" id="activePatchControl">
+                        <div class="section-title">Active Patch</div>
+                        <div class="patch-change-row">
+                            <select id="activePatch" aria-label="Active patch"
+                                title="Patch used when the unit is switched to patch mode. Stored on the device.">
+                                <!-- Options 1-32 will be generated -->
                             </select>
                         </div>
-                        <div>
-                            <label for="patchChangeChannel">MIDI Channel</label>
-                            <select id="patchChangeChannel">
+                    </div>
+
+                    <div class="patch-group patch-group-wide">
+                        <div class="section-title">Program Change</div>
+                        <!-- Labels in the first row, controls in the second -->
+                        <div class="patch-change-row patch-change-settings" id="patchChangeSettings">
+                            <span></span>
+                            <label for="patchChangeInputPort" class="patch-change-setting"
+                                title="MIDI input that listens for Program Change messages">Input Port</label>
+                            <label for="patchChangeChannel" class="patch-change-setting"
+                                title="MIDI channel that listens for Program Change messages">MIDI Channel</label>
+
+                            <label class="patch-change-toggle" for="patchChangeEnabled"
+                                title="Switch patches with incoming Program Change messages while in patch mode">
+                                <input type="checkbox" id="patchChangeEnabled" class="filter-checkbox">
+                                Enabled
+                            </label>
+                            <select id="patchChangeInputPort"
+                                title="MIDI input that listens for Program Change messages">
+                                <!-- Options will be generated based on device type -->
+                            </select>
+                            <select id="patchChangeChannel"
+                                title="MIDI channel that listens for Program Change messages">
                                 <!-- Options 1-16 will be generated -->
                             </select>
                         </div>
@@ -142,18 +164,31 @@
 
             <div id="globalTab" class="tab-content">
                 <div class="section">
-                    <label for="ioLedBrightness">I/O LED Brightness</label>
-                    <div class="slider-container">
-                        <input type="range" id="ioLedBrightness" class="brightness-slider" min="0" max="8" step="1" value="8">
-                        <span class="slider-value" id="ioLedBrightnessValue">8</span>
+                    <div class="section-title" id="operatingModeLabel">Operating Mode</div>
+                    <div class="mode-switch" role="group" aria-labelledby="operatingModeLabel">
+                        <button type="button" class="mode-button active" data-mode="computer" aria-pressed="true"
+                            title="Routing and filters are controlled by the computer through the driver">Computer</button>
+                        <button type="button" class="mode-button" data-mode="patch" aria-pressed="false"
+                            title="Standalone: routes with the active patch from the Patch tab. MIDI from the computer is not passed to the outputs. Sends all notes off and resets controllers on every channel when switching.">Patch</button>
                     </div>
                 </div>
 
                 <div class="section">
-                    <label for="rsLedBrightness">RS LED Brightness</label>
-                    <div class="slider-container">
-                        <input type="range" id="rsLedBrightness" class="brightness-slider" min="0" max="8" step="1" value="8">
-                        <span class="slider-value" id="rsLedBrightnessValue">8</span>
+                    <div class="section-title">LED Brightness</div>
+                    <div class="section-body">
+                        <label for="ioLedBrightness">I/O LEDs</label>
+                        <div class="slider-container">
+                            <input type="range" id="ioLedBrightness" class="brightness-slider" min="0" max="8" step="1" value="8">
+                            <span class="slider-value" id="ioLedBrightnessValue">8</span>
+                        </div>
+                    </div>
+
+                    <div class="section-body">
+                        <label for="rsLedBrightness">RS LEDs</label>
+                        <div class="slider-container">
+                            <input type="range" id="rsLedBrightness" class="brightness-slider" min="0" max="8" step="1" value="8">
+                            <span class="slider-value" id="rsLedBrightnessValue">8</span>
+                        </div>
                     </div>
                 </div>
             </div>

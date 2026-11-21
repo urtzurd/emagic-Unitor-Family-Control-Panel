@@ -1,3 +1,41 @@
+/* ==========================================================================
+   Theme
+   ========================================================================== */
+
+:root {
+    --accent: #667eea;
+    --accent-gradient: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
+    --accent-shadow: rgba(102, 126, 234, 0.4);
+    --accent-shadow-pressed: rgba(102, 126, 234, 0.3);
+    --success-gradient: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    --success-shadow: rgba(72, 187, 120, 0.4);
+    --success-shadow-pressed: rgba(72, 187, 120, 0.3);
+
+    --text: #333;
+    --text-muted: #555;
+    --text-subtle: #666;
+    --text-disabled: #aaa;
+    --border: #e0e0e0;
+    --border-control: #d0d0d0;
+    --surface-muted: #f0f0f0;
+    --surface-subtle: #f5f5f5;
+    --surface-hover: #e8e8e8;
+
+    /* Space between sections, and between a section title and its content */
+    --section-spacing: 25px;
+    --title-spacing: 12px;
+
+    /* Routing matrix: row label width and the gap between cells */
+    --matrix-label-width: 60px;
+    --matrix-gap: 8px;
+
+    --slider-thumb-size: 24px;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
 * {
     margin: 0;
     padding: 0;
@@ -6,49 +44,12 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
+    background: var(--accent-gradient);
     min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
-}
-
-button {
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
-    color: white;
-    border: none;
-    padding: 14px 28px;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: box-shadow 0.2s, opacity 0.6s ease, filter 0.6s ease, transform 0.1s ease;
-    width: 100%;
-    opacity: 1;
-    filter: brightness(1);
-}
-
-button span {
-    display: inline-block;
-}
-
-button:active:not(:disabled) {
-    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
-    transform: translate(2px, 2px);
-}
-
-button.button-disabled {
-    opacity: 0.5;
-    filter: brightness(0.7);
-}
-
-button:disabled {
-    cursor: not-allowed;
-}
-
-button:hover:not(:disabled) {
-    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
 }
 
 .container {
@@ -59,254 +60,119 @@ button:hover:not(:disabled) {
     width: 600px;
 }
 
+/* The patches panel is as wide as its content */
 .container.wide {
     width: fit-content;
-    transition: width 0.3s ease;
 }
 
 h1 {
-    color: #333;
+    color: var(--text);
+    margin-top: -20px;
     margin-bottom: 10px;
     font-size: 28px;
 }
 
+/* emagic logo in the panel headers */
+h1 svg {
+    vertical-align: bottom;
+    margin-right: 10px;
+    padding-top: 20px;
+}
+
+.subtitle {
+    color: var(--text-subtle);
+    margin-bottom: 30px;
+    font-size: 14px;
+}
+
 label {
     display: block;
-    color: #555;
+    color: var(--text-muted);
     font-weight: 600;
     margin-bottom: 8px;
     font-size: 14px;
 }
 
-.matrix-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: auto;
-}
-
-.matrix-actions button {
-    flex: 1;
-    width: auto;
-}
-
-.matrix-checkbox,
-.filter-checkbox {
-    width: 40px;
-    height: 40px;
-    appearance: none;
-    border: 2px solid #d0d0d0;
-    border-radius: 4px;
-    cursor: pointer;
-    position: relative;
-    transition: all 0.2s;
-    background: white;
-}
-
-.matrix-checkbox:checked,
-.filter-checkbox:checked {
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
-    border-color: #667eea;
-}
-
-.matrix-checkbox:hover,
-.filter-checkbox:hover {
-    border-color: #667eea;
-}
-
-.matrix-grid {
-    display: grid;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.matrix-label {
-    width: 60px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #555;
-}
-
-.matrix-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-#nextButton {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-}
-
-#nextButton:active:not(:disabled) {
-    box-shadow: 0 4px 10px rgba(72, 187, 120, 0.3);
-}
-
-#nextButton:hover:not(:disabled) {
-    box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
-}
-
-#sendBtn,
-.send-button {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-}
-
-#sendBtn:active:not(:disabled),
-.send-button:active:not(:disabled) {
-    box-shadow: 0 4px 10px rgba(72, 187, 120, 0.3);
-}
-
-#sendBtn:hover:not(:disabled),
-.send-button:hover:not(:disabled) {
-    box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
-}
-
-.filters-column-header {
-    background: #f0f0f0;
-    border-radius: 4px;
-    padding: 4px 8px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 600;
-    color: #555;
-}
-
-.filters-grid {
-    display: grid;
-    grid-template-columns: auto auto auto;
-    gap: 8px 24px;
-    align-items: center;
-    width: fit-content;
-    margin: 0 auto;
-}
-
-.filters-title,
-.filters-span {
-    grid-column: 2 / 4;
-}
-
-.filters-actions {
-    margin-top: 12px;
-}
-
-.filter-label {
-    text-align: right;
-    font-size: 12px;
-    font-weight: 600;
-    color: #555;
-    white-space: nowrap;
-}
-
-.filter-switches {
-    display: flex;
-    gap: 8px;
-}
-
-.output-label {
-    width: 40px;
-    text-align: center;
-    font-size: 11px;
-    font-weight: 600;
-    color: #555;
-}
-
-.output-labels {
-    display: flex;
-    gap: 8px;
-    margin-left: 68px;
-    margin-bottom: 8px;
-}
-
-.panel {
-    display: none;
-}
-
-.panel.active {
-    display: block;
-}
-
-.patch-item {
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background 0.2s;
-}
-
-.patch-item:hover {
-    background: #f0f0f0;
-}
-
-.patch-item.selected {
-    background: #667eea;
-    color: white;
-}
-
-.patch-list {
-    width: 200px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 10px;
-    overflow-y: auto;
-}
-
-.patches-container {
-    display: flex;
-    gap: 20px;
-    height: 500px;
-}
-
-.routing-matrix {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 0 auto;
-}
-
-.routing-matrix .matrix-actions {
-    align-self: stretch;
-}
-
-.patch-change {
-    margin-bottom: 25px;
-}
-
-.patch-change-controls {
-    display: flex;
-    align-items: flex-end;
-    gap: 24px;
-    margin-top: 12px;
-}
-
-.patch-change-controls select {
-    width: 140px;
-}
-
-.patch-change-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 0;
-    cursor: pointer;
-}
-
 .section {
-    margin-bottom: 25px;
+    margin-bottom: var(--section-spacing);
 }
 
 .section-title {
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
+    background: var(--accent-gradient);
     border-radius: 4px;
     padding: 6px 8px;
+    margin-bottom: var(--title-spacing);
     text-align: center;
     font-size: 13px;
     font-weight: 600;
     color: white;
 }
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+button {
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: box-shadow 0.2s, opacity 0.6s ease, filter 0.6s ease, transform 0.1s ease;
+    width: 100%;
+}
+
+button span {
+    display: inline-block;
+}
+
+button:hover:not(:disabled) {
+    box-shadow: 0 8px 20px var(--accent-shadow);
+}
+
+button:active:not(:disabled) {
+    box-shadow: 0 2px 6px var(--accent-shadow-pressed);
+    transform: translate(2px, 2px);
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+/* Faded while a button is being enabled or disabled */
+button.button-disabled {
+    opacity: 0.5;
+    filter: brightness(0.7);
+}
+
+/* Green buttons: confirming actions (Next, Send to Device) and the selected operating mode */
+.button-success,
+.mode-switch .mode-button.active {
+    background: var(--success-gradient);
+    color: white;
+}
+
+.button-success:hover:not(:disabled),
+.mode-switch .mode-button.active:hover:not(:disabled) {
+    box-shadow: 0 8px 20px var(--success-shadow);
+}
+
+.button-success:active:not(:disabled),
+.mode-switch .mode-button.active:active:not(:disabled) {
+    box-shadow: 0 4px 10px var(--success-shadow-pressed);
+}
+
+/* ==========================================================================
+   Form controls
+   ========================================================================== */
 
 select {
     width: 100%;
     padding: 12px 16px;
-    border: 2px solid #e0e0e0;
+    border: 2px solid var(--border);
     border-radius: 8px;
     font-size: 16px;
     transition: border-color 0.3s;
@@ -314,59 +180,45 @@ select {
 }
 
 select:disabled {
-    background: #f5f5f5;
+    background: var(--surface-subtle);
     cursor: not-allowed;
 }
 
 select:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--accent);
 }
 
-.slider-container {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.brightness-slider {
-    flex: 1;
-    -webkit-appearance: none;
+/* Square toggle used for the routing matrix, message filters and patch change */
+.matrix-checkbox,
+.filter-checkbox {
+    width: 40px;
+    height: 40px;
     appearance: none;
-    height: 8px;
+    border: 2px solid var(--border-control);
     border-radius: 4px;
-    background: #e0e0e0;
-    outline: none;
-}
-
-.brightness-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
     cursor: pointer;
-    border: 2px solid white;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    background: white;
 }
 
-.brightness-slider::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
-    cursor: pointer;
-    border: 2px solid white;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+.matrix-checkbox:hover,
+.filter-checkbox:hover {
+    border-color: var(--accent);
 }
 
-.slider-value {
-    min-width: 32px;
-    text-align: center;
-    font-size: 14px;
-    font-weight: 600;
-    color: #555;
+.matrix-checkbox:checked,
+.filter-checkbox:checked {
+    background: var(--accent-gradient);
+    border-color: var(--accent);
+}
+
+/* ==========================================================================
+   Detection panel status message
+   ========================================================================== */
+
+#statusMessage {
+    margin-bottom: var(--section-spacing);
 }
 
 .status {
@@ -395,42 +247,47 @@ select:focus {
     border-left: 4px solid #2e7d32;
 }
 
-.status.warning {
-    background: #fff3e0;
-    color: #e65100;
-    border-left: 4px solid #e65100;
-}
+/* ==========================================================================
+   Tabs
+   ========================================================================== */
 
-.subtitle {
-    color: #666;
-    margin-bottom: 30px;
-    font-size: 14px;
+.tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    gap: 5px;
 }
 
 .tab {
     padding: 12px 24px;
-    background: #f5f5f5;
+    background: var(--surface-subtle);
     border: none;
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
-    color: #666;
+    color: var(--text-subtle);
     transition: background 0.2s, color 0.2s;
 }
 
 .tab.active {
-    background: linear-gradient(135deg, #667eea 0%, #c0c0c0 100%);
+    background: var(--accent-gradient);
     color: white;
+}
+
+.tab:hover:not(.active):not(:disabled) {
+    background: var(--surface-hover);
 }
 
 .tab:disabled {
     opacity: 0.5;
 }
 
-.tab:hover:not(.active):not(:disabled) {
-    background: #e8e8e8;
+.tab-pane-wrapper {
+    border: 2px solid var(--border);
+    border-top: none;
+    border-radius: 8px;
+    padding: 20px;
 }
 
 .tab-content {
@@ -441,16 +298,306 @@ select:focus {
     display: block;
 }
 
-.tab-pane-wrapper {
-    border: 2px solid #e0e0e0;
-    border-top: none;
-    border-radius: 8px;
-    padding: 20px;
+/* ==========================================================================
+   Patches tab: patch selection and routing matrix
+   ========================================================================== */
+
+/* Both columns start at the width of their content, and the free space is shared 1:2
+   (like the Active Patch and Program Change sections), with the content centered under its title */
+.patches-container {
+    display: flex;
+    gap: 24px;
+    /* 500px for the list and matrix, plus the section titles above them */
+    height: 540px;
 }
 
-.tabs {
+.patch-list-column {
+    flex: 1 1 auto;
     display: flex;
-    border-bottom: 2px solid #e0e0e0;
+    flex-direction: column;
+    align-items: center;
+    min-height: 0;
+}
+
+.routing-matrix {
+    flex: 2 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Section titles across the full width of their column */
+.patch-list-column > .section-title,
+.routing-matrix > .section-title {
+    align-self: stretch;
+}
+
+.patch-list {
+    flex: 1;
+    width: 200px;
+    min-height: 0;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+.patch-item {
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.patch-item:hover {
+    background: var(--surface-muted);
+}
+
+.patch-item.selected {
+    background: var(--accent);
+    color: white;
+}
+
+/* Matrix and its buttons, as wide as the matrix */
+.routing-matrix-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Output labels line up with the matrix columns, after the row labels */
+.output-labels {
+    display: flex;
+    gap: var(--matrix-gap);
+    margin-left: calc(var(--matrix-label-width) + var(--matrix-gap));
+    margin-bottom: 8px;
+}
+
+.output-label {
+    width: 40px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.matrix-grid {
+    display: grid;
+    gap: var(--matrix-gap);
+    margin-top: 10px;
+}
+
+.matrix-row {
+    display: flex;
+    align-items: center;
+    gap: var(--matrix-gap);
+}
+
+.matrix-label {
+    width: var(--matrix-label-width);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* Action buttons below the matrix (and below the message filters) */
+.matrix-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.matrix-actions button {
+    flex: 1;
+    width: auto;
+}
+
+.routing-matrix .matrix-actions {
+    align-self: stretch;
+}
+
+/* ==========================================================================
+   Computer and Patch tabs: active message filters
+   ========================================================================== */
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    gap: 8px 24px;
+    align-items: center;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+/* Spans the input and output filter columns */
+.filters-title,
+.filters-span {
+    grid-column: 2 / 4;
+}
+
+/* The grid gap already spaces the title */
+.filters-title {
     margin-bottom: 0;
-    gap: 5px;
+}
+
+.filters-column-header {
+    background: var(--surface-muted);
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.filter-label {
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.filter-switches {
+    display: flex;
+    gap: 8px;
+}
+
+.filters-actions {
+    margin-top: 12px;
+}
+
+/* ==========================================================================
+   Patch tab: active patch and program change
+   ========================================================================== */
+
+.patch-change {
+    display: flex;
+    align-items: stretch;
+    gap: 24px;
+    margin-bottom: var(--section-spacing);
+}
+
+/* Both groups start at the width of their controls, and the free space is shared 1:2,
+   so the active patch group gets half the free space of the program change group */
+.patch-group {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.patch-group-wide {
+    flex: 2 1 auto;
+    min-width: 0;
+}
+
+/* Labels in the first row, controls in the second, one column per setting, centered under
+   the section title. Aligned to the bottom so the active patch dropdown (no label) lines up
+   with the program change controls */
+.patch-change-row {
+    flex: 1;
+    display: grid;
+    grid-template-columns: auto;
+    justify-content: center;
+    align-content: end;
+    align-items: center;
+    gap: 0 24px;
+}
+
+.patch-change-settings {
+    grid-template-columns: auto auto auto;
+}
+
+.patch-change-row label {
+    margin-bottom: 8px;
+}
+
+.patch-change-row select {
+    width: 140px;
+}
+
+.patch-change-row .patch-change-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
+/* Input port and channel only apply while program change switching is enabled */
+.patch-change-row.disabled .patch-change-setting {
+    color: var(--text-disabled);
+}
+
+/* ==========================================================================
+   Global tab: operating mode and LED brightness
+   ========================================================================== */
+
+/* Settings below a section title */
+.section-body + .section-body {
+    margin-top: 12px;
+}
+
+/* Two buttons acting as one switch, the current mode is highlighted (see .button-success) */
+.mode-switch {
+    display: flex;
+    gap: 8px;
+}
+
+.mode-switch .mode-button {
+    flex: 1;
+    width: auto;
+    background: var(--surface-muted);
+    color: var(--text-muted);
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.brightness-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border);
+    outline: none;
+}
+
+/* The two thumb rules can't share a selector list: a browser drops the whole rule
+   if it doesn't recognise one of the selectors */
+.brightness-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: var(--slider-thumb-size);
+    height: var(--slider-thumb-size);
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.brightness-slider::-moz-range-thumb {
+    width: var(--slider-thumb-size);
+    height: var(--slider-thumb-size);
+    border-radius: 50%;
+    background: var(--accent-gradient);
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.slider-value {
+    min-width: 32px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
 }

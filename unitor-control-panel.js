@@ -474,6 +474,10 @@ function showPatchesPanel() {
     generateRoutingMatrix();
     setupComputerAndPatchTabs();
 
+    // Assume Computer Mode for a newly detected device (set by the driver when it starts)
+    operatingMode = 'computer';
+    updateOperatingModeButtons();
+
     // Lock the tab panel to the largest tab's size so switching tabs doesn't resize the window
     const tabPaneWrapper = document.querySelector('.tab-pane-wrapper');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -1050,7 +1054,7 @@ function generateMessageFilters(container, mode, leadingElement = null) {
     actions.appendChild(resetButton);
 
     const sendButton = document.createElement('button');
-    sendButton.className = 'send-button';
+    sendButton.className = 'button-success';
     sendButton.innerHTML = '<span>Send to Device</span>';
     sendButton.addEventListener('click', () => sendMessageFilters(mode));
     actions.appendChild(sendButton);
@@ -1099,11 +1103,27 @@ async function sendMessageFilters(mode) {
         }
     }
 
-    // The unit is already in Computer Mode (the macOS driver sends Set Computer Mode
-    // once when the device starts), so re-send it to make the new filters take effect
-    if (mode === 'computer') {
+    // Re-send Set Computer Mode to make the new filters take effect. In Patch Mode it is skipped
+    // so saving the filters doesn't switch modes; they take effect when switching back to Computer Mode
+    if (mode === 'computer' && operatingMode === 'computer') {
         await sendSetComputerMode();
     }
+}
+
+// Operating mode (Global tab)
+// There is no known message to read the current mode, so this is the last mode set from here.
+// It starts as Computer Mode, as the macOS driver sends Set Computer Mode once when the device starts
+let operatingMode = 'computer';
+
+const modeButtons = document.querySelectorAll('.mode-button');
+
+// Highlight the button of the current mode
+function updateOperatingModeButtons() {
+    modeButtons.forEach(button => {
+        const active = button.dataset.mode === operatingMode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active);
+    });
 }
 
 // Switch all chained units to Computer Mode
@@ -1121,7 +1141,44 @@ async function sendSetComputerMode() {
     logInfo('Sending Set Computer Mode');
     logDebug('sent', msg);
     selectedOutputPort.send(msg);
+
+    operatingMode = 'computer';
+    updateOperatingModeButtons();
 }
+
+// Switch all chained units to Patch Mode, using the stored active patch (left unchanged)
+// This is the message the macOS driver uses: a Patch Select to all units with the
+// 0x40 (EPROM) bit set and patch number 0
+// SysEx: F0 00 20 31 64 10 00 7F 40 F7
+async function sendSetPatchMode() {
+    if (!selectedOutputPort) {
+        logInfo('Cannot send Set Patch Mode - no MIDI output selected');
+        return;
+    }
+
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x10, 0x00, 0x7F, 0x40, 0xF7];
+
+    await ensurePortOpen(selectedOutputPort, 'Output');
+
+    logInfo('Sending Set Patch Mode');
+    logDebug('sent', msg);
+    selectedOutputPort.send(msg);
+
+    operatingMode = 'patch';
+    updateOperatingModeButtons();
+}
+
+// Clicking a mode always sends it, even if it is already highlighted, in case the
+// unit was switched from somewhere else
+modeButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        if (button.dataset.mode === 'patch') {
+            sendSetPatchMode();
+        } else {
+            sendSetComputerMode();
+        }
+    });
+});
 
 // Message filter base address per mode
 // Inputs 1-8 are at base + 0x00-0x07, outputs 1-8 at base + 0x08-0x0F
@@ -1248,10 +1305,39 @@ let patchChange = { enabled: false, inputPort: 1, midiChannel: 1 };
 const patchChangeEnabled = document.getElementById('patchChangeEnabled');
 const patchChangeInputPort = document.getElementById('patchChangeInputPort');
 const patchChangeChannel = document.getElementById('patchChangeChannel');
+const patchChangeSettings = document.getElementById('patchChangeSettings');
+const activePatchControl = document.getElementById('activePatchControl');
+const activePatchSelect = document.getElementById('activePatch');
+
+// Input port and channel only apply while program change switching is enabled
+function updatePatchChangeEnabledState() {
+    patchChangeInputPort.disabled = !patchChange.enabled;
+    patchChangeChannel.disabled = !patchChange.enabled;
+    patchChangeSettings.classList.toggle('disabled', !patchChange.enabled);
+}
+
+// Show the patch change state in the controls
+// (setting them programmatically doesn't fire change events, so nothing is sent back)
+function updatePatchChangeControls() {
+    patchChangeEnabled.checked = patchChange.enabled;
+    patchChangeInputPort.value = patchChange.inputPort;
+    patchChangeChannel.value = patchChange.midiChannel;
+    updatePatchChangeEnabledState();
+}
 
 // Fill the patch change dropdowns based on device type
 function generatePatchChangeOptions() {
     const numInputs = detectedDeviceInfo.deviceType === 'MT4' ? 2 : 8;
+
+    // Only show the active patch when its address in the patch mode block is known
+    activePatchControl.style.display = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType].activePatch ? '' : 'none';
+    activePatchSelect.innerHTML = '';
+    for (let p = 1; p <= 32; p++) {
+        const option = document.createElement('option');
+        option.value = p;
+        option.textContent = `Patch ${p}`;
+        activePatchSelect.appendChild(option);
+    }
 
     patchChangeInputPort.innerHTML = '';
     for (let p = 1; p <= numInputs; p++) {
@@ -1270,21 +1356,61 @@ function generatePatchChangeOptions() {
     }
 
     patchChange = { enabled: false, inputPort: 1, midiChannel: 1 };
-    patchChangeEnabled.checked = patchChange.enabled;
-    patchChangeInputPort.value = patchChange.inputPort;
-    patchChangeChannel.value = patchChange.midiChannel;
+    updatePatchChangeControls();
 }
 
 // Patch change config addresses per device
 // block: start address of the config block read with the request (SysEx 0x14)
 // param: address of the patch change setting, written with SysEx 0x13
 // inputMask: flag bits holding the input port (1 bit for the 2 MT4 inputs, 3 bits for 8 inputs)
+// activePatch: address of the active patch number
+// (on the MT4 04 40, just before the patch change setting like on the Unitor8/AMT8,
+// with the same (patch-1) << 3 encoding; a program change in patch mode updates it too)
 // The response holds 2 bytes per address starting at the block address
 const PATCH_CHANGE_ADDRESSES = {
-    MT4: { block: [0x04, 0x40], param: [0x04, 0x41], inputMask: 0x01 },
-    Unitor8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07 },
-    AMT8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07 }
+    MT4: { block: [0x04, 0x40], param: [0x04, 0x41], inputMask: 0x01, activePatch: [0x04, 0x40] },
+    Unitor8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07, activePatch: [0x02, 0x10] },
+    AMT8: { block: [0x02, 0x00], param: [0x02, 0x11], inputMask: 0x07, activePatch: [0x02, 0x10] }
 };
+
+// Read the active patch (1-32) from a patch mode config response
+// The value is [hi nibble] [lo nibble], with the 0-indexed patch number in bits 3-7
+function parseActivePatch(data) {
+    const { block, activePatch } = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType];
+    if (!activePatch) return null;
+
+    const offset = 11 + (activePatch[1] - block[1]) * 2;
+    if (data.length < offset + 3) return null;
+
+    const value = (data[offset] << 4) | data[offset + 1];
+    return (value >> 3) + 1;
+}
+
+// Store the active patch, used when the unit enters patch mode (it stays in computer mode)
+// SysEx: F0 00 20 31 64 13 00 00 [addr-hi] [addr-lo] 00 [value-hi] [value-lo] F7
+// (value = (patch-1) << 3, split into two 4-bit nibbles)
+// Patch Select (0x10) is not used: addressed to box 00 it has no effect in computer mode,
+// and addressed to all boxes (7F) it also switches the unit to patch mode
+async function sendActivePatch(patchNumber) {
+    if (!selectedOutputPort) {
+        logInfo('Cannot store active patch - no MIDI output selected');
+        return;
+    }
+
+    const { activePatch } = PATCH_CHANGE_ADDRESSES[detectedDeviceInfo.deviceType];
+    if (!activePatch) return;
+
+    // Make sure the output port is open before sending
+    await ensurePortOpen(selectedOutputPort, 'Output');
+
+    const value = (patchNumber - 1) << 3;
+    const storeMsg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x13, 0x00, 0x00,
+        activePatch[0], activePatch[1], 0x00, (value >> 4) & 0x0F, value & 0x0F, 0xF7];
+
+    logInfo(`Storing patch ${patchNumber} as active patch`);
+    logDebug('sent', storeMsg);
+    selectedOutputPort.send(storeMsg);
+}
 
 // Parse the patch change config response
 // Expected pattern: F0 00 20 31 64 79 00 00 [block-hi] [block-lo] 3F [2 bytes per address from block...] F7
@@ -1332,11 +1458,15 @@ async function requestPatchModeConfig() {
         if (response) {
             logInfo(`Received patch change config: ${response.enabled ? 'enabled' : 'disabled'}, input ${response.inputPort}, channel ${response.midiChannel}`);
 
-            // Update controls (setting them programmatically doesn't fire change events, so nothing is sent back)
             patchChange = response;
-            patchChangeEnabled.checked = patchChange.enabled;
-            patchChangeInputPort.value = patchChange.inputPort;
-            patchChangeChannel.value = patchChange.midiChannel;
+            updatePatchChangeControls();
+
+            // The same block holds the active patch
+            const activePatch = parseActivePatch(data);
+            if (activePatch) {
+                logInfo(`Received active patch: ${activePatch}`);
+                activePatchSelect.value = activePatch;
+            }
 
             // The same block holds the patch mode message filters on the Unitor8/AMT8
             if (messageFilters.patch) {
@@ -1383,8 +1513,13 @@ async function sendPatchChange() {
     selectedOutputPort.send(msg);
 }
 
+activePatchSelect.addEventListener('change', () => {
+    sendActivePatch(parseInt(activePatchSelect.value, 10));
+});
+
 patchChangeEnabled.addEventListener('change', () => {
     patchChange.enabled = patchChangeEnabled.checked;
+    updatePatchChangeEnabledState();
     logInfo(`Patch change ${patchChange.enabled ? 'enabled' : 'disabled'}`);
     sendPatchChange();
 });
