@@ -25,6 +25,12 @@ const statusMessage = document.getElementById('statusMessage');
 // Constants
 const RESPONSE_TIMEOUT_MS = 1000; // 1 second timeout for message responses
 
+// Set Computer Mode, to all chained units (7F)
+const SET_COMPUTER_MODE_MSG = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x0F, 0x00, 0x7F, 0xF7];
+// Version request to the first unit. Besides identifying the unit, it makes a unit that has been in
+// Patch Mode answer requests again (tested on the AMT8, see sendSetComputerMode)
+const VERSION_REQUEST_MSG = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x0B, 0x00, 0x00, 0xF7];
+
 // Master MIDI message handler that chains to all registered listeners
 function masterMessageHandler(event) {
     // Always call debug logger first
@@ -115,56 +121,48 @@ async function initMIDI() {
     }
 }
 
-// Update the device dropdown list
-function updateDeviceList() {
-    // Save current selections
-    const currentOutputValue = outputSelect.value;
-    const currentInputValue = inputSelect.value;
-
-    // Update output devices
-    outputSelect.innerHTML = '<option value="">-- Select a MIDI Output --</option>';
-
-    const outputs = Array.from(midiAccess.outputs.values());
-
-    if (outputs.length === 0) {
-        outputSelect.innerHTML = '<option value="">No MIDI output devices found</option>';
-        outputSelect.disabled = true;
-    } else {
-        outputs.forEach((output, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = `${output.name} (${output.manufacturer || 'Unknown'})`;
-            outputSelect.appendChild(option);
-        });
-        outputSelect.disabled = false;
-
-        // Restore previous selection if it still exists
-        if (currentOutputValue !== '' && currentOutputValue < outputs.length) {
-            outputSelect.value = currentOutputValue;
-        }
+// Fill a port dropdown with the given ports, keeping the selected port selected
+// Options are keyed by port id, which stays the same when other ports are added or removed
+// (the list position doesn't). Returns false if the selected port is no longer in the list
+function fillPortSelect(select, ports, selectedPort, label) {
+    if (ports.length === 0) {
+        select.innerHTML = `<option value="">No MIDI ${label} devices found</option>`;
+        select.disabled = true;
+        return selectedPort === null;
     }
 
-    // Update input devices
-    inputSelect.innerHTML = '<option value="">-- Select a MIDI Input --</option>';
+    select.innerHTML = `<option value="">-- Select a MIDI ${label.charAt(0).toUpperCase() + label.slice(1)} --</option>`;
+    ports.forEach(port => {
+        const option = document.createElement('option');
+        option.value = port.id;
+        option.textContent = `${port.name} (${port.manufacturer || 'Unknown'})`;
+        select.appendChild(option);
+    });
+    select.disabled = false;
 
+    if (selectedPort === null) return true;
+    if (!ports.some(port => port.id === selectedPort.id)) return false;
+    select.value = selectedPort.id;
+    return true;
+}
+
+// Update the device dropdown lists
+function updateDeviceList() {
+    const outputs = Array.from(midiAccess.outputs.values());
     const inputs = Array.from(midiAccess.inputs.values());
 
-    if (inputs.length === 0) {
-        inputSelect.innerHTML = '<option value="">No MIDI input devices found</option>';
-        inputSelect.disabled = true;
-    } else {
-        inputs.forEach((input, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = `${input.name} (${input.manufacturer || 'Unknown'})`;
-            inputSelect.appendChild(option);
-        });
-        inputSelect.disabled = false;
-
-        // Restore previous selection if it still exists
-        if (currentInputValue !== '' && currentInputValue < inputs.length) {
-            inputSelect.value = currentInputValue;
-        }
+    // A selected port that is no longer available is deselected, so the dropdown
+    // and the port in use always match
+    if (!fillPortSelect(outputSelect, outputs, selectedOutputPort, 'output')) {
+        logInfo(`Output device no longer available: ${selectedOutputPort.name}`);
+        selectedOutputPort = null;
+        deviceDetected = false;
+    }
+    if (!fillPortSelect(inputSelect, inputs, selectedInputPort, 'input')) {
+        logInfo(`Input device no longer available: ${selectedInputPort.name}`);
+        selectedInputPort.onmidimessage = null;
+        selectedInputPort = null;
+        deviceDetected = false;
     }
 
     // Update scan button state
@@ -216,8 +214,7 @@ outputSelect.addEventListener('change', async (e) => {
         selectedOutputPort = null;
         logInfo('Output device deselected');
     } else {
-        const outputs = Array.from(midiAccess.outputs.values());
-        selectedOutputPort = outputs[e.target.value];
+        selectedOutputPort = midiAccess.outputs.get(e.target.value);
         logInfo(`Output device selected: ${selectedOutputPort.name} (manufacturer: ${selectedOutputPort.manufacturer || 'Unknown'}, id: ${selectedOutputPort.id})`);
 
         // Debug: log state/connection changes for this port
@@ -245,8 +242,7 @@ inputSelect.addEventListener('change', async (e) => {
         selectedInputPort = null;
         logInfo('Input device deselected');
     } else {
-        const inputs = Array.from(midiAccess.inputs.values());
-        selectedInputPort = inputs[e.target.value];
+        selectedInputPort = midiAccess.inputs.get(e.target.value);
 
         logInfo(`Input device selected: ${selectedInputPort.name} (manufacturer: ${selectedInputPort.manufacturer || 'Unknown'}, id: ${selectedInputPort.id})`);
 
@@ -289,6 +285,25 @@ function parseFirmwareVersion(bytes) {
     }
     return versionString;
 }
+
+// Firmware version as a number, the way emagic's software compares versions: the three ASCII digits
+// read as a decimal number (e.g. "106" -> 106 for 1.0.6). NaN if the version isn't three digits
+function firmwareVersionNumber(bytes) {
+    const versionString = String.fromCharCode(...bytes);
+    return /^\d{3}$/.test(versionString) ? parseInt(versionString, 10) : NaN;
+}
+
+// Unitor8 firmware older than 1.0.6 can't edit the Computer, Patch or Click setup
+// (emagic's software warns about it after a scan; the AMT8 and MT4 aren't affected)
+const UNITOR8_MIN_SETUP_VERSION = 106;
+
+function supportsModeSetups() {
+    return !(detectedDeviceInfo &&
+        detectedDeviceInfo.deviceType === 'Unitor8' &&
+        detectedDeviceInfo.versionNumber < UNITOR8_MIN_SETUP_VERSION);
+}
+
+const OLD_UNITOR8_MESSAGE = "Unitor8 firmware older than 1.0.6 can't edit the Computer and Patch setup. This firmware can't be updated over MIDI: the EPROM chip has to be replaced with a newer version.";
 
 // Check if response matches expected pattern
 function isUnitor8ScanResponse(data) {
@@ -346,10 +361,7 @@ async function scanDevice() {
     });
 
     const scanMessage = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x03, 0x00, 0x7F, 0xF7];
-    const firmwareRequestMsg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x0B, 0x00, 0x00, 0xF7];
-
-    logInfo('Sending initial scan message');
-    logDebug('sent', scanMessage);
+    const firmwareRequestMsg = VERSION_REQUEST_MSG;
 
     try {
         // Send both messages immediately without delay
@@ -405,7 +417,8 @@ async function scanDevice() {
                     resolve({
                         version: version,
                         deviceType: firmwareCheck.deviceType,
-                        deviceTypeByte: firmwareCheck.deviceTypeByte
+                        deviceTypeByte: firmwareCheck.deviceTypeByte,
+                        versionNumber: firmwareVersionNumber(versionBytes)
                     });
                 }
             };
@@ -413,8 +426,18 @@ async function scanDevice() {
             // Add scan handler to listener chain
             addMessageListener(scanHandler);
 
+            // Start in Computer Mode: the unit may be in Patch Mode (set from the front panel, by a driver
+            // that doesn't send Set Computer Mode such as the Windows one, or by a previous session).
+            // In Patch Mode the unit doesn't answer, and the version request below makes it answer again.
+            // emagic's update files start with the same two messages
+            logInfo('Sending Set Computer Mode');
+            logDebug('sent', SET_COMPUTER_MODE_MSG);
+            selectedOutputPort.send(SET_COMPUTER_MODE_MSG);
+
             // Send both messages immediately
             // MT4 requires both messages to be sent without delay
+            logInfo('Sending initial scan message');
+            logDebug('sent', scanMessage);
             selectedOutputPort.send(scanMessage);
             logInfo('Sending firmware request message');
             logDebug('sent', firmwareRequestMsg);
@@ -428,7 +451,8 @@ async function scanDevice() {
         detectedDeviceInfo = firmwareInfo; // Store for later use
         updateScanButtonState();
 
-        showStatus(`Successfully detected ${firmwareInfo.deviceType} with firmware version ${firmwareInfo.version}`, 'success');
+        showStatus(`Successfully detected ${firmwareInfo.deviceType} with firmware version ${firmwareInfo.version}` +
+            (supportsModeSetups() ? '' : `<br>${OLD_UNITOR8_MESSAGE}`), 'success');
 
     } catch (error) {
         showStatus(`Error: ${error.message}`, 'error');
@@ -474,7 +498,10 @@ function showPatchesPanel() {
     generateRoutingMatrix();
     setupComputerAndPatchTabs();
 
-    // Assume Computer Mode for a newly detected device (set by the driver when it starts)
+    // The MT4 has no LED brightness setting
+    document.getElementById('ledBrightnessSection').style.display = supportsLedBrightness() ? '' : 'none';
+
+    // The scan sets Computer Mode
     operatingMode = 'computer';
     updateOperatingModeButtons();
 
@@ -610,6 +637,10 @@ async function requestPatchData(patchNumber) {
     logInfo(`Requesting patch ${patchNumber}`);
     logDebug('sent', requestPatchMsg);
 
+    // Until the routing of the selected patch arrives, the matrix still shows the previous patch,
+    // so sending is disabled to avoid writing that routing to this patch
+    sendBtn.disabled = true;
+
     // Set up listener for patch response
     const patchHandler = (event) => {
         const data = Array.from(event.data);
@@ -617,13 +648,20 @@ async function requestPatchData(patchNumber) {
         // Check if this is a patch response
         const patchResponse = parsePatchResponse(data);
         if (patchResponse && patchResponse.patchNumber === patchNumber) {
+            // Remove this handler after receiving response
+            removeMessageListener(patchHandler);
+
+            // Another patch was selected while waiting: its own request updates the matrix
+            if (patchNumber !== currentPatch) {
+                logInfo(`Ignoring patch ${patchNumber} data - patch ${currentPatch} is now selected`);
+                return;
+            }
+
             logInfo(`Received patch ${patchNumber} data`);
 
             // Update matrix with routing data
             updateMatrixFromPatchData(patchResponse.routing);
-
-            // Remove this handler after receiving response
-            removeMessageListener(patchHandler);
+            sendBtn.disabled = false;
         }
     };
 
@@ -945,6 +983,86 @@ function bindBrightnessSlider(sliderId, valueId, ledType) {
 bindBrightnessSlider('ioLedBrightness', 'ioLedBrightnessValue', 'io');
 bindBrightnessSlider('rsLedBrightness', 'rsLedBrightnessValue', 'rs');
 
+// Global Setup block, holding the LED brightness at 00 07 (I/O) and 00 08 (RS)
+const GLOBAL_SETUP_BLOCK = [0x00, 0x00];
+const GLOBAL_SETUP_COUNT_MINUS_ONE = 0x1F; // 32 addresses, as emagic's software reads it
+
+// Brightness level (0-8) from the two bytes read from the device
+// Each level is a single bit (see LED_BRIGHTNESS_BYTES). If more than one bit is set, the highest wins
+function parseLedBrightness(hi, lo) {
+    const value = ((hi & 0x0F) << 4) | (lo & 0x0F);
+    let level = 0;
+    for (let bit = 0; bit < 8; bit++) {
+        if (value & (1 << bit)) level = bit + 1;
+    }
+    return level;
+}
+
+// Show a brightness level on its slider (setting the value doesn't fire events, so nothing is sent back)
+function setBrightnessSlider(sliderId, valueId, level) {
+    document.getElementById(sliderId).value = level;
+    document.getElementById(valueId).textContent = level === 0 ? 'Off' : level;
+}
+
+// LED brightness is a Unitor8/AMT8 setting. The MT4 has none: it ignores reads of the Global Setup
+// block and writes to it have no visible effect, and emagic's MT4 Global Setup page only has
+// the program change setting (block 04 40)
+function supportsLedBrightness() {
+    return detectedDeviceInfo && detectedDeviceInfo.deviceType !== 'MT4';
+}
+
+// Request the Global Setup block and show the LED brightness on the sliders
+// SysEx: F0 00 20 31 64 14 00 00 00 00 1F F7
+// Skipped in Patch Mode, where the unit doesn't answer: the sliders keep the last values read
+async function requestGlobalConfig() {
+    if (!supportsLedBrightness()) return;
+
+    if (!selectedOutputPort || !selectedInputPort) {
+        logInfo('Cannot request global config - no MIDI ports selected');
+        return;
+    }
+
+    if (operatingMode === 'patch') {
+        logInfo('Global config not requested - the unit does not answer in Patch Mode');
+        return;
+    }
+
+    const block = GLOBAL_SETUP_BLOCK;
+    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x14, 0x00, 0x00, block[0], block[1],
+        GLOBAL_SETUP_COUNT_MINUS_ONE, 0xF7];
+
+    // Make sure both ports are open before we send/expect a response
+    await ensurePortOpen(selectedOutputPort, 'Output');
+    await ensurePortOpen(selectedInputPort, 'Input');
+
+    logInfo('Requesting global config');
+    logDebug('sent', msg);
+
+    const ledOffset = ledType => 11 + (LED_SELECT_BYTE[ledType] - block[1]) * 2;
+
+    const globalHandler = (event) => {
+        const data = Array.from(event.data);
+        if (!isConfigBlockResponse(data, block, ledOffset('rs') + 3, GLOBAL_SETUP_COUNT_MINUS_ONE)) return;
+
+        const ioLevel = parseLedBrightness(data[ledOffset('io')], data[ledOffset('io') + 1]);
+        const rsLevel = parseLedBrightness(data[ledOffset('rs')], data[ledOffset('rs') + 1]);
+        logInfo(`Received LED brightness: I/O ${ioLevel}, RS ${rsLevel}`);
+
+        setBrightnessSlider('ioLedBrightness', 'ioLedBrightnessValue', ioLevel);
+        setBrightnessSlider('rsLedBrightness', 'rsLedBrightnessValue', rsLevel);
+
+        removeMessageListener(globalHandler);
+    };
+
+    addMessageListener(globalHandler);
+    selectedOutputPort.send(msg);
+
+    // Set timeout to remove handler if no response
+    setTimeout(() => {
+        removeMessageListener(globalHandler);
+    }, RESPONSE_TIMEOUT_MS);
+}
+
 // Active message filters (Computer and Patch tabs, Unitor8/AMT8 only)
 const MESSAGE_FILTER_TYPES = [
     { id: 'mtc', label: 'MTC' },
@@ -960,6 +1078,17 @@ const NUM_FILTER_PORTS = 8;
 // Filter state: messageFilters[mode][direction][filterType][port] = enabled
 // mode is 'computer' (Computer tab) or 'patch' (Patch tab)
 let messageFilters = {};
+
+// "Send to Device" button of each mode's filters. It is only enabled once the switches hold known
+// values (read from the unit, or set with Reset). Otherwise a failed read would leave every switch
+// off, and sending would replace the unit's filters with "nothing filtered"
+let filterSendButtons = {};
+
+function setFilterSendEnabled(mode, enabled) {
+    if (filterSendButtons[mode]) {
+        filterSendButtons[mode].disabled = !enabled;
+    }
+}
 
 // Generate the active message filters grid into the given container
 // An optional leading element is placed above the filters, spanning both filter
@@ -1059,6 +1188,10 @@ function generateMessageFilters(container, mode, leadingElement = null) {
     sendButton.addEventListener('click', () => sendMessageFilters(mode));
     actions.appendChild(sendButton);
 
+    // Disabled until the filters are read from the unit (or reset)
+    sendButton.disabled = true;
+    filterSendButtons[mode] = sendButton;
+
     grid.appendChild(actions);
 
     container.appendChild(grid);
@@ -1092,6 +1225,9 @@ function resetMessageFilters(mode) {
         }
     });
 
+    // The switches now hold known values, so they can be sent
+    setFilterSendEnabled(mode, true);
+
     logInfo(`Message filters (${mode}) reset to default (Active Sensing and System Reset)`);
 }
 
@@ -1103,44 +1239,78 @@ async function sendMessageFilters(mode) {
         }
     }
 
-    // Re-send Set Computer Mode to make the new filters take effect. In Patch Mode it is skipped
-    // so saving the filters doesn't switch modes; they take effect when switching back to Computer Mode
-    if (mode === 'computer' && operatingMode === 'computer') {
+    // Re-send Set Computer Mode to make the new computer filters take effect. Patch filters take effect
+    // the next time the unit enters Patch Mode (filters can only be edited in Computer Mode)
+    if (mode === 'computer') {
         await sendSetComputerMode();
     }
 }
 
 // Operating mode (Global tab)
 // There is no known message to read the current mode, so this is the last mode set from here.
-// It starts as Computer Mode, as the macOS driver sends Set Computer Mode once when the device starts
+// It starts as Computer Mode, as the scan sends Set Computer Mode
 let operatingMode = 'computer';
 
 const modeButtons = document.querySelectorAll('.mode-button');
 
-// Highlight the button of the current mode
+const patchModeNote = document.getElementById('patchModeNote');
+
+// Highlight the button of the current mode, and enable the tabs available in it
 function updateOperatingModeButtons() {
     modeButtons.forEach(button => {
         const active = button.dataset.mode === operatingMode;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active);
     });
+
+    updateTabAvailability();
+}
+
+// In Patch Mode the unit doesn't answer requests, so the tabs that read from it are disabled
+// (writes would still work, but over stale data). Only the Global tab stays available.
+// The MT4 has no message filters, so its Computer tab is always disabled.
+// Unitor8 firmware older than 1.0.6 can't edit the Computer and Patch setup, so those tabs are disabled
+function updateTabAvailability() {
+    const patchMode = operatingMode === 'patch';
+    const supportsFilters = detectedDeviceInfo && detectedDeviceInfo.deviceType !== 'MT4';
+    const modeSetups = supportsModeSetups();
+
+    const computerTab = document.querySelector('.tab[data-tab="computer"]');
+    const patchTab = document.querySelector('.tab[data-tab="patch"]');
+
+    document.querySelector('.tab[data-tab="patches"]').disabled = patchMode;
+    computerTab.disabled = patchMode || !supportsFilters || !modeSetups;
+    patchTab.disabled = patchMode || !modeSetups;
+
+    // Explain on hover why the setup tabs are disabled on an old Unitor8
+    computerTab.title = modeSetups ? '' : OLD_UNITOR8_MESSAGE;
+    patchTab.title = modeSetups ? '' : OLD_UNITOR8_MESSAGE;
+
+    patchModeNote.classList.toggle('visible', patchMode);
 }
 
 // Switch all chained units to Computer Mode
 // SysEx: F0 00 20 31 64 0F 00 7F F7 (7F = all units)
+// In Patch Mode the unit stops sending anything to the computer, and Set Computer Mode alone doesn't
+// re-enable it: the unit stays silent until it receives a version request (tested on the AMT8).
+// So a version request follows, like the macOS driver, which sends one to each unit when it starts.
+// Its reply is ignored
+// SysEx: F0 00 20 31 64 0B 00 00 F7
 async function sendSetComputerMode() {
     if (!selectedOutputPort) {
         logInfo('Cannot send Set Computer Mode - no MIDI output selected');
         return;
     }
 
-    const msg = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x0F, 0x00, 0x7F, 0xF7];
-
     await ensurePortOpen(selectedOutputPort, 'Output');
 
     logInfo('Sending Set Computer Mode');
-    logDebug('sent', msg);
-    selectedOutputPort.send(msg);
+    logDebug('sent', SET_COMPUTER_MODE_MSG);
+    selectedOutputPort.send(SET_COMPUTER_MODE_MSG);
+
+    logInfo('Sending version request to re-enable replies from the unit');
+    logDebug('sent', VERSION_REQUEST_MSG);
+    selectedOutputPort.send(VERSION_REQUEST_MSG);
 
     operatingMode = 'computer';
     updateOperatingModeButtons();
@@ -1188,9 +1358,10 @@ const MESSAGE_FILTER_ADDRESSES = {
 };
 
 // Check if a message is a config block response for the given block address
-// Expected pattern: F0 00 20 31 64 79 00 00 [block-hi] [block-lo] 3F [2 bytes per address from block...] F7
-function isConfigBlockResponse(data, block, minLength) {
-    const header = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x79, 0x00, 0x00, block[0], block[1], 0x3F];
+// Expected pattern: F0 00 20 31 64 79 00 00 [block-hi] [block-lo] [count-1] [2 bytes per address from block...] F7
+// count-1 is 3F (64 addresses) for the computer and patch mode blocks
+function isConfigBlockResponse(data, block, minLength, countMinusOne = 0x3F) {
+    const header = [0xF0, 0x00, 0x20, 0x31, 0x64, 0x79, 0x00, 0x00, block[0], block[1], countMinusOne];
 
     if (data.length < minLength) return false;
     for (let i = 0; i < header.length; i++) {
@@ -1251,6 +1422,8 @@ function updateMessageFiltersFromResponse(mode, data, block) {
         }
     });
 
+    setFilterSendEnabled(mode, true);
+
     logInfo(`Updated message filters (${mode}) from device`);
 }
 
@@ -1273,6 +1446,9 @@ async function requestComputerModeConfig() {
 
     logInfo('Requesting computer mode config');
     logDebug('sent', msg);
+
+    // Until the reply arrives the switches may not match the unit
+    setFilterSendEnabled('computer', false);
 
     // Set up listener for computer mode config response
     const computerModeHandler = (event) => {
@@ -1309,11 +1485,19 @@ const patchChangeSettings = document.getElementById('patchChangeSettings');
 const activePatchControl = document.getElementById('activePatchControl');
 const activePatchSelect = document.getElementById('activePatch');
 
+// Whether the patch mode config (active patch and program change) has been read from the unit.
+// Until then the controls show defaults, not the unit's values. Each change writes the whole
+// program change setting, so changing one control would also write the defaults of the others
+let patchModeConfigLoaded = false;
+
+// The controls are only enabled once the patch mode config has been read.
 // Input port and channel only apply while program change switching is enabled
 function updatePatchChangeEnabledState() {
-    patchChangeInputPort.disabled = !patchChange.enabled;
-    patchChangeChannel.disabled = !patchChange.enabled;
-    patchChangeSettings.classList.toggle('disabled', !patchChange.enabled);
+    activePatchSelect.disabled = !patchModeConfigLoaded;
+    patchChangeEnabled.disabled = !patchModeConfigLoaded;
+    patchChangeInputPort.disabled = !patchModeConfigLoaded || !patchChange.enabled;
+    patchChangeChannel.disabled = !patchModeConfigLoaded || !patchChange.enabled;
+    patchChangeSettings.classList.toggle('disabled', !patchModeConfigLoaded || !patchChange.enabled);
 }
 
 // Show the patch change state in the controls
@@ -1356,6 +1540,7 @@ function generatePatchChangeOptions() {
     }
 
     patchChange = { enabled: false, inputPort: 1, midiChannel: 1 };
+    patchModeConfigLoaded = false;
     updatePatchChangeControls();
 }
 
@@ -1451,6 +1636,11 @@ async function requestPatchModeConfig() {
     logInfo('Requesting patch mode config');
     logDebug('sent', msg);
 
+    // Until the reply arrives the controls may not match the unit
+    patchModeConfigLoaded = false;
+    updatePatchChangeEnabledState();
+    setFilterSendEnabled('patch', false);
+
     // Set up listener for patch change config response
     const patchModeHandler = (event) => {
         const data = Array.from(event.data);
@@ -1459,6 +1649,7 @@ async function requestPatchModeConfig() {
             logInfo(`Received patch change config: ${response.enabled ? 'enabled' : 'disabled'}, input ${response.inputPort}, channel ${response.midiChannel}`);
 
             patchChange = response;
+            patchModeConfigLoaded = true;
             updatePatchChangeControls();
 
             // The same block holds the active patch
@@ -1549,8 +1740,9 @@ function setupComputerAndPatchTabs() {
     patchChangeSection.classList.remove('filters-span');
     patchFiltersContainer.before(patchChangeSection);
 
-    document.querySelector('.tab[data-tab="computer"]').disabled = !supportsFilters;
+    updateTabAvailability();
     generatePatchChangeOptions();
+    filterSendButtons = {};
 
     if (supportsFilters) {
         generateMessageFilters(computerFiltersContainer, 'computer');
@@ -1577,6 +1769,8 @@ document.querySelectorAll('.tab').forEach(tab => {
             requestPatchModeConfig();
         } else if (targetTab === 'computer') {
             requestComputerModeConfig();
+        } else if (targetTab === 'global') {
+            requestGlobalConfig();
         }
     });
 });

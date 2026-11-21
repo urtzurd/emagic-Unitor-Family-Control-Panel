@@ -554,6 +554,18 @@ select:focus {
     color: var(--text-muted);
 }
 
+/* Shown in Patch Mode. Hidden with visibility so it keeps its space and the tab size doesn't change */
+.mode-note {
+    margin-top: var(--title-spacing);
+    font-size: 13px;
+    color: var(--text-subtle);
+    visibility: hidden;
+}
+
+.mode-note.visible {
+    visibility: visible;
+}
+
 .slider-container {
     display: flex;
     align-items: center;

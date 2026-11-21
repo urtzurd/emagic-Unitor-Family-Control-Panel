@@ -117,8 +117,8 @@ The firmware version comes back as ASCII digits, and the reply's box byte identi
 4. The model is read from the reply as `box byte & 07`, and the version from the three ASCII digits that follow.
 
 **Version limits (X):**
-- Unitor8 firmware 1.0.6 and older can't edit the Computer, Patch or Click setup.
-- With 1.0.6 and older in a chain, the units must be switched on in order, from the computer to the end of the chain.
+- Unitor8 firmware **older than** 1.0.6 can't edit the Computer, Patch or Click setup. The software reads the three version digits as a decimal number and checks Unitor8 units (model `0`) for a value below `106`. It only shows a warning and doesn't disable the pages. The panel disables its Computer and Patch tabs instead.
+- With a Unitor8 running exactly 1.0.6 in a chain of more than one unit, the units must be switched on in order, from the computer to the end of the chain. (The warning says "1.0.6 or older", but older units already get the first warning.)
 - If no unit answers, the user is asked to press "Panic/Patch" on the first unit and retry.
 
 ---
@@ -132,6 +132,8 @@ Request: F0 00 20 31 64 12 00 00 [patch] F7
 Reply:   F0 00 20 31 64 7A 00 00 [patch] 00 [routing...] F7
 Write:   F0 00 20 31 64 11 00 00 [patch] 00 [routing...] F7
 ```
+
+**In patch mode (T):** writing the active patch's routing doesn't change the live routing. It takes effect after the patch-mode command is sent again (`10 00 7F 40`). This matches emagic's software, which resets its tracked mode after every `11` write (§6).
 
 ### Routing data
 
@@ -198,8 +200,8 @@ The Windows software defines exactly five blocks (X):
 
 | Block | Address | Setting | Models | Sources |
 |---|---|---|---|---|
-| `00 00` | `00 07` | I/O LED brightness | all | W P T X |
-| | `00 08` | RS LED brightness | all | W P T X |
+| `00 00` | `00 07` | I/O LED brightness | Unitor8/AMT8 | W P T X |
+| | `00 08` | RS LED brightness | Unitor8/AMT8 | W P T X |
 | | `00 02`, `00 04`, `00 06`, `00 0B`–`00 0E` | Written by the 1.3.1 update file before updating (values `51`, `47`, `48`, `45 46 41 42`); meaning unknown | Unitor8 | X |
 | `01 00` | `01 00`–`01 07` | Computer mode filters, In 1–8 | Unitor8/AMT8 | W P T X |
 | | `01 08`–`01 0F` | Computer mode filters, Out 1–8 | Unitor8/AMT8 | W P T X |
@@ -287,6 +289,13 @@ The value has a single bit set for each level.
 
 The prefPane caps level 8 at `04 00`, so its levels 7 and 8 are the same. The panel sends `08 00` for level 8.
 
+The panel reads both values with the Global Setup read, `14 00 00 00 00 1F`. The value at `00 07` is at reply offset 25 and the one at `00 08` at offset 27 (T, AMT8).
+
+**MT4:** it has no LED brightness setting.
+- It doesn't answer reads of block `00 00`: neither `14 00 00 00 00 1F` nor the two-location `14 00 00 00 07 01` (T).
+- Writes to `00 07` and `00 08` make no visible difference (T).
+- emagic's editor has two pages that both appear as "Global Setup" (X). The Global Setup page (block `00 00`) holds the two brightness settings. The MT4 Global Setup page (block `04 40`) has a single control, "Program Change" (`04 41`).
+
 Set the RS LEDs to level 5:
 
 ```
@@ -336,6 +345,7 @@ F0 00 20 31 64 0D 00 [box] [a] [b] [record × 4] F7
 | **Computer** | The computer controls routing. Incoming MIDI, including program changes, is forwarded to the computer. The computer mode filters apply. |
 | **Patch** | Standalone. Routing comes from the active patch, and program changes on the configured input and channel switch patches. The patch mode filters apply. MIDI from the computer isn't passed to the outputs. On entering patch mode the AMT8 sends all notes off, reset controllers and pitch bend centre on every channel. |
 
+- **Replies in patch mode (T, AMT8):** after `10 00 7F 40` the unit sends nothing to the computer, so routing (`12`) and settings (`14`) requests get no answer. Set Computer Mode (`0F`) alone doesn't change this. The unit only answers again after a version request (`0B 00 00`), which the panel sends right after `0F`. The macOS driver also sends `0B` to each unit when it starts.
 - **Reading the mode:** no message for this is known.
 - **MT4:** its front panel can't enter patch mode, so SysEx is the only way.
 - **Unitor8/AMT8:** the front panel can also switch modes.
